@@ -305,9 +305,10 @@ Since we already defined the function that does CV for each model. We can use pu
 
 ```{r}
 rmse_df<-data.frame(j=1:folds) |> 
-  mutate(rmse_mdl1=map_dbl(j, kfold_cv, df=penguins_fold,formula=grow1),
+  mutate(rmse_mdl1=map_dbl(j,kfold_cv,df=penguins_fold,formula=grow1),
          rmse_mdl2=map_dbl(j,kfold_cv,df=penguins_fold,formula=grow2),
          rmse_mdl3=map_dbl(j,kfold_cv,df=penguins_fold,formula=grow3))
+
 
 rmse_means<-rmse_df |> 
   summarize(across(starts_with('rmse'),mean))
