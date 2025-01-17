@@ -58,8 +58,15 @@ mdl<-lm(f1, data=df_where_column_names_come_frome)
 
 ```{r}
 # Use this chunk and any extras to complete setting up the model
-```
 
+grow1 = mass~bill_l+bill_d+flip_l+species+sex+island
+grow2 = mass~bill_l+bill_d+flip_l+species+sex
+grow3 = mass~bill_d+flip_l+species+sex
+
+m1 = lm(grow1,data=penguins_clean)
+m2 = lm(grow2,data=penguins_clean)
+m3 = lm(grow3,data=penguins_clean)
+```
 
 
 ### AIC
@@ -69,7 +76,8 @@ Use AIC to justify your model selection. What edits do you need to make in order
 ```{r}
 #| eval: false
 
-AIC(x,y,z)
+AIC(m1,m2,m3)
+
 ```
 
 
@@ -79,9 +87,16 @@ Now we're going to use 10-fold cross validation to help us select the models. Wr
 
 Pseudocode:
 
+- Set testing data to the side
+-- use random sampling
+- Determine the # of training data we want to use (K=10)
+- For each model
+-- Apply model to each training set
+-- Make prediction on test data with fitted model
 
-
-
+- Set metric for accuracy (Root mean squared error: RMSE)
+- Summarize RMSE to determine which model was best on avg
+- Final model built using entire dataset
 
 
 
@@ -108,6 +123,13 @@ calc_rmse_2<-function(x,y){
   
   return(rmse)
 }
+
+x=1:100
+y=101:200
+x=rnorm(1e5)
+y=rnorm(1e5)
+calc_rmse(x,y)
+calc_rmse_2(x,y)
 ```
 
 
@@ -142,7 +164,7 @@ Why is everybody getting different answers in the example sample? Is this a prob
 
 ```{r}
 #seed
-
+set.seed(42)
 
 ```
 
@@ -155,7 +177,7 @@ folds<-10
 fold_vec<-rep(1:folds,length.out=nrow(penguins_clean))
 
 penguins_fold<-penguins_clean |> #what goes here?
-  
+  mutate(group=sample(fold_vec,size=n(),replace=FALSE))
 
 #check to make sure the fold groups are balanced
 
@@ -166,6 +188,11 @@ Create dataframes called `test_df` and `train_df` that split the penguins data i
 
 ```{r}
 # datasets here
+test_df = penguins_fold |>
+  filter(group == 10)
+
+train_df = penguins_fold |>
+  filter(group!=10)
 ```
 
 
@@ -173,7 +200,9 @@ Now fit each model to the training set using the `lm()`. Name each model `traini
 
 ```{r}
 
-
+training_lm1 = lm(grow1,data=train_df)
+training_lm2 = lm(grow2,data=train_df)
+training_lm3 = lm(grow3,data=train_df)
 
 ```
 
@@ -184,17 +213,20 @@ Now fit each model to the training set using the `lm()`. Name each model `traini
 `predict()` uses R models to run predictions with new data. In our case the structure would look something like what we see below. What do I need to do to make this chunk work?
 
 ```{r}
-predict_test<-test_df |> 
-  mutate(model1 = predict(xxx,test_df),
-         model2 = predict(xxx,test_df),
-         model3 = predict(xxx,test_df))
+predict_test2<-test_df |> 
+  mutate(model1 = predict(training_lm1,test_df),
+         model2 = predict(training_lm2,test_df),
+         model3 = predict(training_lm3,test_df))
 ```
 
 Calculate the RMSE of the first fold test predictions. Hint: Use summarize to condense the `predict_test` dataframe.
 
 ```{r}
 rmse_predict_test<-predict_test |> 
-  summarize(????)
+  summarize(rmse1=calc_rmse(mass,model1),
+            rmse2=calc_rmse(mass,model2),
+            rmse3=calc_rmse(mass,model3))
+
 ```
 
 What are the results just looking at the first fold?
@@ -206,40 +238,65 @@ Our general structure works with one fold. Now we need to evaluate across all 10
 ```{r}
 
 ### initialize a blank vector
-rmse_vec<-vector(length=folds)  #Why?
+rmse_vec<-vector(length=folds,mode="numeric")  #Why?
+
+# create a vector of our calculations
 
 for( i in 1:folds){
-
+set.seed(42)
   # separate into test and train
-  
+  training_df = penguins_fold |>
+    filter(group!=i)
+  testing_df = penguins_fold |>
+    filter(group==i)
   
   # Run for one model
+  model_lm = lm(grow1, data=training_df)
   
   #Get the predictions from the model
+  predict_test = testing_df |>
+    mutate(model=predict(model_lm,testing_df))
   
   # Summarize/calculate the rmse for that model
+  kfold_rmse = predict_test |>
+    summarize(rmse=calc_rmse(mass,model))
   
-  
-  rmse_vec[i]<-kfold_rmse$rmse_md1
+  rmse_vec[i]<-kfold_rmse$rmse
 }
 
 # Average value for the first model
 mean(rmse_vec)
+
+model_final = lm(grow1,data=penguins_df)
 ```
 
 
 Great we made a for loop for one model. Now we would have to do it again and again for the other formulas. To reduce copy/pasting let's make the innerpart of the for loop into a function. I gave you the starting pieces below. Complete the rest of the function
 
 ```{r}
+# generalize into a function
 kfold_cv<-function(i,df,formula){
   
+  # separate into test and train
+  training_df = df |>
+    filter(group!=i)
+  testing_df = df |>
+    filter(group==i)
   
+  # Run for one model
+  model_lm = lm(formula, data=training_df)
   
+  #Get the predictions from the model
+  predict_test = testing_df |>
+    mutate(model=predict(model_lm,testing_df))
+  
+  # Summarize/calculate the rmse for that model
+  kfold_rmse = predict_test |>
+    summarize(rmse_md=calc_rmse(mass,model))
+  
+  return(kfold_rmse$rmse_md)
 }
 ```
-
-
-
 
 
 ### 10-fold CV: Purrr
@@ -247,9 +304,10 @@ kfold_cv<-function(i,df,formula){
 Since we already defined the function that does CV for each model. We can use purrr to easily get all the results and store it in a dataframe.
 
 ```{r}
-rmse_df<-data.frame(j=1:folds) |> mutate(rmse_mdl1 = map_dbl(j, kfold_cv, df=penguins_fold,formula=f1),
-                                         rmse_mdl2=map_dbl(j,kfold_cv,df=penguins_fold,formula=f2),
-                                         rmse_mdl3=map_dbl(j,kfold_cv,df=penguins_fold,formula=f3))
+rmse_df<-data.frame(j=1:folds) |> 
+  mutate(rmse_mdl1=map_dbl(j, kfold_cv, df=penguins_fold,formula=grow1),
+         rmse_mdl2=map_dbl(j,kfold_cv,df=penguins_fold,formula=grow2),
+         rmse_mdl3=map_dbl(j,kfold_cv,df=penguins_fold,formula=grow3))
 
 rmse_means<-rmse_df |> 
   summarize(across(starts_with('rmse'),mean))
